@@ -1,9 +1,7 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameColor, GameState } from './types';
 import {
   COLORS_ORDER,
-  COLOR_CONFIGS,
   SIMON_FLASH_DURATION_MS,
   SIMON_PAUSE_BETWEEN_FLASHES_MS,
   PLAYER_PRESS_FLASH_DURATION_MS,
@@ -11,6 +9,30 @@ import {
   INITIAL_GAME_START_DELAY_MS
 } from './constants';
 import ColorButton from './components/ColorButton';
+
+// Audio file mapping (make sure your files are all lowercase in /public/audio/)
+const AUDIO_PATHS: Record<string, string> = {
+  RED: '/audio/red.mp3',
+  BLUE: '/audio/blue.mp3',
+  GREEN: '/audio/green.mp3',
+  YELLOW: '/audio/yellow.mp3',
+  fail: '/audio/fail.mp3',
+  start: '/audio/game-start.mp3',
+  gameover: '/audio/gameover-off.mp3',
+};
+
+// Simple playSound function with logging for debugging
+const playSound = (sound: string) => {
+  const src = AUDIO_PATHS[sound];
+  if (src) {
+    const audio = new Audio(src);
+    audio.play().catch(error => {
+      console.error(`Failed to play ${sound} sound:`, error);
+    });
+  } else {
+    console.error(`No audio path found for sound: ${sound}`);
+  }
+};
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>('IDLE');
@@ -21,30 +43,41 @@ const App: React.FC = () => {
   const [highScore, setHighScore] = useState<number>(0);
   const [feedbackMessage, setFeedbackMessage] = useState<string>('Press Start to Play!');
 
-  // Utility to add a new color to Simon's sequence
-  const simonAddsColor = useCallback(() => {
+  // Add a new color to Simon's sequence
+  const simonAddsColor = () => {
     const randomColorIndex = Math.floor(Math.random() * COLORS_ORDER.length);
     const newColor = COLORS_ORDER[randomColorIndex];
     setSequence(prevSeq => [...prevSeq, newColor]);
-  }, []);
+  };
 
-  // Effect for Simon's turn logic (adding color and initiating display)
+  // Add this temporarily to test file existence
+useEffect(() => {
+  COLORS_ORDER.forEach(color => {
+    const audio = new Audio(AUDIO_PATHS[color]);
+    audio.addEventListener('canplaythrough', () => {
+      console.log(`${color} audio loaded successfully`);
+    });
+    audio.addEventListener('error', (e) => {
+      console.error(`Failed to load ${color} audio:`, e);
+    });
+  });
+}, []);
+
+  // Simon's turn logic
   useEffect(() => {
     if (gameState === 'SIMON_TURN') {
-      // If sequence length matches current score, it means player just completed a level or it's the first turn.
       if (sequence.length === score) {
-         setTimeout(() => {
-            simonAddsColor();
-         }, sequence.length === 0 ? INITIAL_GAME_START_DELAY_MS : DELAY_BEFORE_NEXT_ROUND_MS / 2); // shorter delay if first, longer between rounds
+        setTimeout(() => {
+          simonAddsColor();
+        }, sequence.length === 0 ? INITIAL_GAME_START_DELAY_MS : DELAY_BEFORE_NEXT_ROUND_MS / 2);
       }
-      // If sequence is already longer (e.g., after simonAddsColor), the display effect will handle it.
     }
-  }, [gameState, score, sequence.length, simonAddsColor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState, score, sequence.length]);
 
-
-  // Effect for displaying Simon's sequence
+  // Display Simon's sequence
   useEffect(() => {
-    if (gameState === 'SIMON_TURN' && sequence.length > 0 && sequence.length > playerSequence.length) { // Ensures it plays new part of sequence
+    if (gameState === 'SIMON_TURN' && sequence.length > 0 && sequence.length > playerSequence.length) {
       setFeedbackMessage("Simon's turn...");
       const timeouts: NodeJS.Timeout[] = [];
       let i = 0;
@@ -52,13 +85,13 @@ const App: React.FC = () => {
       const playNextInSequence = () => {
         if (i < sequence.length) {
           setLitColor(sequence[i]);
+          playSound(sequence[i]);
           timeouts.push(setTimeout(() => {
             setLitColor(null);
             i++;
             if (i < sequence.length) {
               timeouts.push(setTimeout(playNextInSequence, SIMON_PAUSE_BETWEEN_FLASHES_MS));
             } else {
-              // Sequence finished displaying
               setGameState('PLAYER_TURN');
               setPlayerSequence([]);
               setFeedbackMessage('Your turn!');
@@ -66,24 +99,26 @@ const App: React.FC = () => {
           }, SIMON_FLASH_DURATION_MS));
         }
       };
-      
-      // Delay before starting sequence display, especially if it's not the very first color added in this turn
-      const initialDisplayDelay = (sequence.length - score === 1 && score > 0) ? SIMON_PAUSE_BETWEEN_FLASHES_MS : INITIAL_GAME_START_DELAY_MS;
+
+      const initialDisplayDelay =
+        sequence.length - score === 1 && score > 0
+          ? SIMON_PAUSE_BETWEEN_FLASHES_MS
+          : INITIAL_GAME_START_DELAY_MS;
       timeouts.push(setTimeout(playNextInSequence, initialDisplayDelay));
-      
+
       return () => {
         timeouts.forEach(clearTimeout);
-        setLitColor(null); // Ensure lit color is cleared on cleanup
+        setLitColor(null);
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState, sequence]); // Runs when sequence updates during Simon's turn
+  }, [gameState, sequence]);
 
-
+  // Handle player input
   const handlePlayerInput = (color: GameColor) => {
-    if (gameState !== 'PLAYER_TURN' || litColor) return; // Prevent input if not player's turn or Simon is flashing
-
+    if (gameState !== 'PLAYER_TURN' || litColor) return;
     setLitColor(color);
+    playSound(color);
     setTimeout(() => setLitColor(null), PLAYER_PRESS_FLASH_DURATION_MS);
 
     const newPlayerSequence = [...playerSequence, color];
@@ -91,11 +126,12 @@ const App: React.FC = () => {
 
     // Check correctness
     if (newPlayerSequence[newPlayerSequence.length - 1] !== sequence[newPlayerSequence.length - 1]) {
-      // Mistake
       setFeedbackMessage(`Game Over! Final Score: ${score}`);
       if (score > highScore) {
         setHighScore(score);
       }
+      playSound('fail');
+      setTimeout(() => playSound('gameover'), 400);
       setGameState('GAME_OVER');
       return;
     }
@@ -105,27 +141,27 @@ const App: React.FC = () => {
       const newScore = sequence.length;
       setScore(newScore);
       setFeedbackMessage(`Correct! Level ${newScore} passed.`);
-      // Transition to Simon's turn after a delay
       setTimeout(() => {
-        setPlayerSequence([]); // Reset for Simon's display logic check
+        setPlayerSequence([]);
         setGameState('SIMON_TURN');
       }, DELAY_BEFORE_NEXT_ROUND_MS);
     }
   };
 
+  // Start game
   const startGame = () => {
-    setGameState('IDLE'); // Reset to IDLE first to ensure clean state transitions
+    setGameState('IDLE');
     setSequence([]);
     setPlayerSequence([]);
     setScore(0);
     setLitColor(null);
     setFeedbackMessage("Get Ready...");
-    // Transition to SIMON_TURN, which will trigger effects to add first color and play
+    playSound('start');
     setTimeout(() => {
-        setGameState('SIMON_TURN');
+      setGameState('SIMON_TURN');
     }, INITIAL_GAME_START_DELAY_MS / 2);
   };
-  
+
   const isButtonDisabled = gameState !== 'PLAYER_TURN' || !!litColor;
 
   return (
@@ -157,12 +193,12 @@ const App: React.FC = () => {
               index === 1 ? 'rounded-tr-full' : 
               index === 2 ? 'rounded-bl-full' : 
               'rounded-br-full'
-            } // Specific rounding for a more classic Simon look
+            }
           />
         ))}
         {/* Central circle aesthetic */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-24 h-24 sm:w-32 sm:h-32 bg-gray-800 rounded-full border-4 border-gray-700 shadow-inner"></div>
+          <div className="w-24 h-24 sm:w-32 sm:h-32 bg-gray-800 rounded-full border-4 border-gray-700 shadow-inner"></div>
         </div>
       </main>
 
@@ -175,7 +211,7 @@ const App: React.FC = () => {
             {gameState === 'GAME_OVER' ? 'Play Again?' : 'Start Game'}
           </button>
         ) : (
-          <div className="h-12"> {/* Placeholder to prevent layout shift */} </div>
+          <div className="h-12"></div>
         )}
       </footer>
     </div>
@@ -183,4 +219,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-    

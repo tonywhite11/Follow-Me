@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { GameColor, ColorButtonConfig } from '../types';
+import { GameColor } from '../types';
 import { COLOR_CONFIGS } from '../constants';
 
 interface ColorButtonProps {
