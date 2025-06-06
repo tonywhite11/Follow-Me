@@ -1,0 +1,5 @@
+{
+  "name": "Simon Game Challenge",
+  "description": "A classic memory game where players repeat sequences of colored lights and sounds. Test your memory and see how long a sequence you can recall!",
+  "requestFramePermissions": []
+}
