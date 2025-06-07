@@ -10,20 +10,20 @@ import {
 } from './constants';
 import ColorButton from './components/ColorButton';
 
-// Audio file mapping (make sure your files are all lowercase in /public/audio/)
+// Audio file mapping (all lowercase keys and filenames)
 const AUDIO_PATHS: Record<string, string> = {
-  RED: '/audio/red.mp3',
-  BLUE: '/audio/blue.mp3',
-  GREEN: '/audio/green.mp3',
-  YELLOW: '/audio/yellow.mp3',
+  red: '/audio/red.mp3',
+  blue: '/audio/blue.mp3',
+  green: '/audio/green.mp3',
+  yellow: '/audio/yellow.mp3',
   fail: '/audio/fail.mp3',
   start: '/audio/game-start.mp3',
   gameover: '/audio/gameover-off.mp3',
 };
 
-// Simple playSound function with logging for debugging
+// Simple playSound function with case normalization
 const playSound = (sound: string) => {
-  const src = AUDIO_PATHS[sound];
+  const src = AUDIO_PATHS[sound.toLowerCase()];
   if (src) {
     const audio = new Audio(src);
     audio.play().catch(error => {
@@ -34,6 +34,8 @@ const playSound = (sound: string) => {
   }
 };
 
+const PLAYER_TIMEOUT_MS = 5000; // 5 seconds to press a button
+
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>('IDLE');
   const [sequence, setSequence] = useState<GameColor[]>([]);
@@ -42,6 +44,7 @@ const App: React.FC = () => {
   const [score, setScore] = useState<number>(0);
   const [highScore, setHighScore] = useState<number>(0);
   const [feedbackMessage, setFeedbackMessage] = useState<string>('Press Start to Play!');
+  const [showInstructions, setShowInstructions] = useState<boolean>(false);
 
   // Add a new color to Simon's sequence
   const simonAddsColor = () => {
@@ -49,19 +52,6 @@ const App: React.FC = () => {
     const newColor = COLORS_ORDER[randomColorIndex];
     setSequence(prevSeq => [...prevSeq, newColor]);
   };
-
-  // Add this temporarily to test file existence
-useEffect(() => {
-  COLORS_ORDER.forEach(color => {
-    const audio = new Audio(AUDIO_PATHS[color]);
-    audio.addEventListener('canplaythrough', () => {
-      console.log(`${color} audio loaded successfully`);
-    });
-    audio.addEventListener('error', (e) => {
-      console.error(`Failed to load ${color} audio:`, e);
-    });
-  });
-}, []);
 
   // Simon's turn logic
   useEffect(() => {
@@ -113,6 +103,20 @@ useEffect(() => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState, sequence]);
+
+  // Player inactivity timer
+  useEffect(() => {
+    if (gameState !== 'PLAYER_TURN') return;
+
+    const timeout = setTimeout(() => {
+      setFeedbackMessage('Time out! Game Over.');
+      playSound('fail');
+      setTimeout(() => playSound('gameover'), 400);
+      setGameState('GAME_OVER');
+    }, PLAYER_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [gameState, playerSequence]);
 
   // Handle player input
   const handlePlayerInput = (color: GameColor) => {
@@ -167,6 +171,13 @@ useEffect(() => {
   return (
     <div className="flex flex-col items-center justify-center p-4 min-h-screen w-full max-w-lg mx-auto text-center">
       <header className="mb-6 w-full">
+        {/* How to Play Button */}
+        <button
+          onClick={() => setShowInstructions(true)}
+          className="mb-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+        >
+          How to Play
+        </button>
         <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 mb-2">
           Simon Challenge
         </h1>
@@ -214,6 +225,29 @@ useEffect(() => {
           <div className="h-12"></div>
         )}
       </footer>
+
+      {/* Instructions Modal */}
+      {showInstructions && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full relative">
+            <button
+              onClick={() => setShowInstructions(false)}
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 text-2xl"
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">How to Play</h2>
+            <ul className="text-gray-700 list-disc pl-5 space-y-2 text-left">
+              <li>Press <b>Start Game</b> to begin.</li>
+              <li>Watch the sequence of lights and sounds.</li>
+              <li>Repeat the sequence by clicking the colored buttons in order.</li>
+              <li>If you make a mistake or run out of time, the game ends.</li>
+              <li>Try to beat your high score!</li>
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
